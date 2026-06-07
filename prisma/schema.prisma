@@ -1,0 +1,251 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  walletAddress String   @unique
+  email         String?  @unique
+  displayName   String?
+  avatarUrl     String?
+  nonce         String   @default(cuid())
+  loginCount    Int      @default(0)
+  lastLogin     DateTime?
+  isActive      Boolean  @default(true)
+  isBanned      Boolean  @default(false)
+  banReason     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  portfolio    Portfolio?
+  trades       Trade[]
+  transactions Transaction[]
+  preferences  UserPreference?
+  auditLogs    AuditLog[]
+  apiKeys      ApiKey[]
+
+  @@map("users")
+}
+
+model Portfolio {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  totalValue      Decimal  @default(0) @db.Decimal(20, 8)
+  cash            Decimal  @default(0) @db.Decimal(20, 8)
+  invested        Decimal  @default(0) @db.Decimal(20, 8)
+  dayPnL          Decimal  @default(0) @db.Decimal(20, 8)
+  dayPnLPercent   Decimal  @default(0) @db.Decimal(10, 4)
+  totalPnL        Decimal  @default(0) @db.Decimal(20, 8)
+  totalPnLPercent Decimal  @default(0) @db.Decimal(10, 4)
+  winRate         Decimal  @default(0) @db.Decimal(5, 2)
+  totalTrades     Int      @default(0)
+  winningTrades   Int      @default(0)
+  losingTrades    Int      @default(0)
+  sharpeRatio     Decimal? @db.Decimal(10, 4)
+  maxDrawdown     Decimal? @db.Decimal(10, 4)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  history PortfolioHistory[]
+
+  @@map("portfolios")
+}
+
+model PortfolioHistory {
+  id          String   @id @default(cuid())
+  portfolioId String
+  totalValue  Decimal  @db.Decimal(20, 8)
+  cash        Decimal  @db.Decimal(20, 8)
+  invested    Decimal  @db.Decimal(20, 8)
+  dayPnL      Decimal  @db.Decimal(20, 8)
+  recordedAt  DateTime @default(now())
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@index([portfolioId, recordedAt])
+  @@map("portfolio_history")
+}
+
+model Trade {
+  id           String      @id @default(cuid())
+  userId       String
+  marketId     String
+  marketName   String
+  marketSlug   String?
+  outcome      String
+  outcomeIndex Int?
+  entryPrice   Decimal     @db.Decimal(10, 6)
+  entryAmount  Decimal     @db.Decimal(20, 8)
+  exitPrice    Decimal?    @db.Decimal(10, 6)
+  exitAmount   Decimal?    @db.Decimal(20, 8)
+  shares       Decimal     @db.Decimal(20, 8)
+  pnl          Decimal?    @db.Decimal(20, 8)
+  pnlPercent   Decimal?    @db.Decimal(10, 4)
+  fees         Decimal     @default(0) @db.Decimal(20, 8)
+  status       TradeStatus @default(OPEN)
+  txHash       String?
+  notes        String?
+  openedAt     DateTime    @default(now())
+  closedAt     DateTime?
+  updatedAt    DateTime    @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([userId, openedAt])
+  @@index([marketId])
+  @@map("trades")
+}
+
+model Transaction {
+  id            String            @id @default(cuid())
+  userId        String
+  type          TransactionType
+  method        PaymentMethod
+  amount        Decimal           @db.Decimal(20, 8)
+  currency      String            @default("USDC")
+  fee           Decimal           @default(0) @db.Decimal(20, 8)
+  status        TransactionStatus @default(PENDING)
+  externalId    String?
+  stripeId      String?
+  txHash        String?
+  fromAddress   String?
+  toAddress     String?
+  network       String?
+  notes         String?
+  failureReason String?
+  metadata      Json?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  completedAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@index([userId, createdAt])
+  @@index([status])
+  @@map("transactions")
+}
+
+model UserPreference {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  theme                 Theme    @default(DARK)
+  currency              String   @default("USD")
+  language              String   @default("en")
+  emailNotifications    Boolean  @default(true)
+  tradeConfirmations    Boolean  @default(true)
+  priceAlerts           Boolean  @default(true)
+  newsletterSubscribed  Boolean  @default(false)
+  twoFactorEnabled      Boolean  @default(false)
+  defaultSlippage       Decimal  @default(1) @db.Decimal(5, 2)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+}
+
+model ApiKey {
+  id          String    @id @default(cuid())
+  userId      String
+  name        String
+  keyHash     String    @unique
+  keyPrefix   String
+  permissions String[]
+  lastUsed    DateTime?
+  expiresAt   DateTime?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("api_keys")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  resource   String
+  resourceId String?
+  details    Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}
+
+model MarketCache {
+  id          String    @id
+  slug        String?
+  title       String
+  description String?
+  category    String?
+  endDate     DateTime?
+  resolution  String?
+  volume      Decimal?  @db.Decimal(20, 8)
+  liquidity   Decimal?  @db.Decimal(20, 8)
+  yesPrice    Decimal?  @db.Decimal(10, 6)
+  noPrice     Decimal?  @db.Decimal(10, 6)
+  isResolved  Boolean   @default(false)
+  isActive    Boolean   @default(true)
+  metadata    Json?
+  cachedAt    DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([isActive, cachedAt])
+  @@index([category])
+  @@map("market_cache")
+}
+
+enum TradeStatus {
+  OPEN
+  CLOSED
+  PARTIAL
+  CANCELLED
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  FEE
+  REWARD
+  TRADE_BUY
+  TRADE_SELL
+}
+
+enum PaymentMethod {
+  APPLE_PAY
+  BANK_TRANSFER
+  CRYPTO
+  STRIPE_CARD
+}
+
+enum TransactionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum Theme {
+  DARK
+  LIGHT
+  SYSTEM
+}
